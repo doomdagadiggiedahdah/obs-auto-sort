@@ -4,6 +4,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **For detailed project specifications and context, see [README.md](README.md)**
 
+## Vault Structure
+
+This project now includes an Obsidian vault in `claude_responses/` with the plugin installed at:
+- **Vault location**: `claude_responses/` (contains all the markdown notes)
+- **Plugin location**: `claude_responses/.obsidian/plugins/fleeting-notes-sorter/`
+
 ## Project Overview
 
 This is an Obsidian plugin called "Fleeting Notes Sorter" that provides comprehensive fleeting notes management with semantic search, visualization, and intelligent organization capabilities. The project is in early development stages.
@@ -67,9 +73,43 @@ src/
 
 ## Common Commands
 
-Since this is an Obsidian plugin project, typical commands would include:
+### Development
 - `npm install` - Install dependencies
-- `npm run build` - Build the plugin
+- `npm run build` - Build the plugin (creates main.js)
 - `npm run dev` - Development build with watching
+- `npm run deploy` - Build and copy files to the vault's plugin directory
 
-Note: Package.json and build configuration files need to be created as development progresses.
+### Plugin Installation
+The plugin is installed in the vault at `claude_responses/.obsidian/plugins/fleeting-notes-sorter/` with the essential files:
+- `main.js` (compiled plugin code)
+- `manifest.json` (plugin metadata)
+- `styles.css` (plugin styles)
+
+### Testing
+1. Open `claude_responses/` folder as an Obsidian vault
+2. Enable the plugin in Settings > Community plugins
+3. Use the ribbon icon or command palette to access the fleeting notes panel
+
+## Debugging Against Working Codebases
+
+When issues arise, compare incrementally against a known working Obsidian plugin:
+
+### Process
+1. **Identify the broken functionality** (e.g., plugin not loading, UI not showing, search not working)
+2. **Find a working reference** (similar Obsidian plugin or official sample)
+3. **Compare piece by piece**:
+   - `manifest.json` - Check version compatibility, required fields
+   - `main.ts` - Compare plugin initialization, view registration
+   - View files - Compare UI creation, event handlers
+   - Search logic - Compare text processing, result formatting
+4. **Apply specific fixes** rather than wholesale rewrites
+5. **Test each change** before moving to the next component
+
+### File-by-File Comparison Priority
+1. `manifest.json` (plugin metadata and compatibility)
+2. `src/main.ts` (core plugin initialization)
+3. `src/views/FleetingNotesView.ts` (UI panel creation)
+4. `src/search/TextSearch.ts` (basic search functionality)
+5. Event handling and user interactions
+
+This incremental approach helps identify exactly what patterns work vs. what doesn't, leading to faster and more reliable fixes.
