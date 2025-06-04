@@ -36,7 +36,7 @@ var __publicField = (obj, key, value) => {
   return value;
 };
 
-// src/main.ts
+// main.ts
 var main_exports = {};
 __export(main_exports, {
   default: () => FleetingNotesPlugin
@@ -8022,7 +8022,7 @@ var FleetingNotesSettingTab = class extends import_obsidian3.PluginSettingTab {
   }
 };
 
-// src/main.ts
+// main.ts
 var DEFAULT_SETTINGS = {
   panelVisible: true,
   dbConnectionString: "",

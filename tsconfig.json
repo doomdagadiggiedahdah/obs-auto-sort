@@ -9,17 +9,8 @@
     "noImplicitAny": true,
     "moduleResolution": "node",
     "importHelpers": true,
-<<<<<<< HEAD
     "isolatedModules": true,
     "strictNullChecks": true,
-    "lib": [
-      "DOM",
-      "ES5",
-      "ES6",
-      "ES7"
-=======
-    "declaration": true,
-    "outDir": "lib",
     "allowSyntheticDefaultImports": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
@@ -28,15 +19,11 @@
     ],
     "lib": [
       "DOM",
-      "ES6"
->>>>>>> 991d477 (init)
+      "ES6",
+      "ES7"
     ]
   },
   "include": [
     "**/*.ts"
   ]
-<<<<<<< HEAD
 }
-=======
-}
->>>>>>> 991d477 (init)
