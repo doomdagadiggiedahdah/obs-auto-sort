@@ -15,29 +15,6 @@ export class FleetingNotesSettingTab extends PluginSettingTab {
 
 		containerEl.createEl('h2', { text: 'Fleeting Notes Sorter Settings' });
 
-		// Database connection setting
-		new Setting(containerEl)
-			.setName('Database Connection String')
-			.setDesc('PostgreSQL connection string for storing note embeddings and metadata')
-			.addText(text => text
-				.setPlaceholder('postgresql://user:password@localhost:5432/fleeting_notes')
-				.setValue(this.plugin.settings.dbConnectionString)
-				.onChange(async (value) => {
-					this.plugin.settings.dbConnectionString = value;
-					await this.plugin.saveSettings();
-				}));
-
-		// Semantic search toggle
-		new Setting(containerEl)
-			.setName('Enable Semantic Search')
-			.setDesc('Enable semantic search using local embeddings (requires database connection)')
-			.addToggle(toggle => toggle
-				.setValue(this.plugin.settings.enableSemanticSearch)
-				.onChange(async (value) => {
-					this.plugin.settings.enableSemanticSearch = value;
-					await this.plugin.saveSettings();
-				}));
-
 		// Embedding model setting
 		new Setting(containerEl)
 			.setName('Embedding Model')

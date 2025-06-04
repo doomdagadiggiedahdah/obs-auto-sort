@@ -1,23 +1,27 @@
 import { Plugin } from 'obsidian';
 import { FleetingNotesView, VIEW_TYPE_FLEETING_NOTES } from './views/FleetingNotesView';
 import { FleetingNotesSettingTab } from './settings/SettingsTab';
+import { DatabaseManager } from './database/queries';
 
 interface FleetingNotesSettings {
 	panelVisible: boolean;
-	dbConnectionString: string;
+	chromaHost: string;
+	chromaPort: number;
 	enableSemanticSearch: boolean;
 	embeddingModel: string;
 }
 
 const DEFAULT_SETTINGS: FleetingNotesSettings = {
 	panelVisible: true,
-	dbConnectionString: '',
+	chromaHost: 'localhost',
+	chromaPort: 8000,
 	enableSemanticSearch: true,
 	embeddingModel: 'local'
 };
 
 export default class FleetingNotesPlugin extends Plugin {
 	settings: FleetingNotesSettings;
+	dbManager: DatabaseManager | null = null;
 
 	async onload() {
 		await this.loadSettings();
@@ -45,6 +49,9 @@ export default class FleetingNotesPlugin extends Plugin {
 		// Add settings tab
 		this.addSettingTab(new FleetingNotesSettingTab(this.app, this));
 
+		// Initialize database connection
+		await this.initializeDatabase();
+
 		// Initialize view if panel should be visible
 		if (this.settings.panelVisible) {
 			this.initFleetingNotesView();
@@ -53,6 +60,9 @@ export default class FleetingNotesPlugin extends Plugin {
 
 	onunload() {
 		this.app.workspace.detachLeavesOfType(VIEW_TYPE_FLEETING_NOTES);
+		if (this.dbManager) {
+			this.dbManager.close();
+		}
 	}
 
 	async loadSettings() {
@@ -93,5 +103,34 @@ export default class FleetingNotesPlugin extends Plugin {
 		});
 		
 		workspace.revealLeaf(leaf);
+	}
+
+	async initializeDatabase(): Promise<void> {
+		try {
+			console.log('Initializing ChromaDB connection...');
+			this.dbManager = new DatabaseManager(this.settings.chromaHost, this.settings.chromaPort);
+			
+			const connectionTest = await this.dbManager.testConnection();
+			if (connectionTest) {
+				console.log('ChromaDB connection successful');
+				const initResult = await this.dbManager.initialize();
+				if (initResult) {
+					console.log('ChromaDB collections initialized');
+				} else {
+					console.error('Failed to initialize ChromaDB collections');
+				}
+			} else {
+				console.error('ChromaDB connection failed');
+			}
+		} catch (error) {
+			console.error('Error initializing database:', error);
+		}
+	}
+
+	async testDatabaseConnection(): Promise<boolean> {
+		if (!this.dbManager) {
+			return false;
+		}
+		return await this.dbManager.testConnection();
 	}
 }

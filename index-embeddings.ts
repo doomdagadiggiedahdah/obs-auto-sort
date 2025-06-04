@@ -2,9 +2,7 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { drizzle } from 'drizzle-orm/postgres-js';
-import postgres from 'postgres';
-import { eq, sql } from 'drizzle-orm';
+import { ChromaClient } from 'chromadb';
 import { pipeline } from '@xenova/transformers';
 import * as crypto from 'crypto';
 
@@ -31,18 +29,14 @@ const embeddings = {
 };
 
 class EmbeddingIndexer {
-  private db: any;
-  private client: any;
+  private client: ChromaClient;
+  private notesCollection: any;
   private embedder: any;
 
   constructor() {
-    // Database connection - use peer authentication (same as psql -U postgres)
-    this.client = postgres({
-      host: '/var/run/postgresql',
-      database: 'fleeting_notes',
-      username: 'postgres'
-    });
-    this.db = drizzle(this.client);
+    // ChromaDB connection
+    this.client = new ChromaClient();
+    this.notesCollection = null;
     this.embedder = null;
   }
 
@@ -81,45 +75,58 @@ class EmbeddingIndexer {
     return notesData;
   }
 
+  async initialize(): Promise<void> {
+    this.notesCollection = await this.client.getOrCreateCollection({
+      name: 'notes',
+      metadata: { description: 'Obsidian notes with embeddings' }
+    });
+  }
+
   async getExistingNotes(): Promise<any[]> {
-    const result = await this.client`SELECT * FROM notes`;
-    return result;
+    if (!this.notesCollection) return [];
+    
+    try {
+      const results = await this.notesCollection.get({
+        include: ['metadatas']
+      });
+      return results.ids.map((id: string, index: number) => ({
+        id,
+        path: results.metadatas[index]?.path,
+        title: results.metadatas[index]?.title
+      }));
+    } catch (error) {
+      console.error('Error getting existing notes:', error);
+      return [];
+    }
   }
 
-  async getExistingEmbeddings(): Promise<any[]> {
-    const result = await this.client`SELECT note_id FROM embeddings`;
-    return result;
-  }
-
-  async insertNote(noteData: any): Promise<string> {
+  async insertNoteWithEmbedding(noteData: any, embedding: number[]): Promise<string> {
+    if (!this.notesCollection) {
+      throw new Error('Collection not initialized');
+    }
+    
     const noteId = crypto.randomUUID();
     
-    await this.client`
-      INSERT INTO notes (id, path, title, content, created, modified, size, tags)
-      VALUES (${noteId}, ${noteData.path}, ${noteData.title}, ${noteData.content}, 
-              ${noteData.created}, ${noteData.modified}, ${noteData.size}, ${noteData.tags})
-      ON CONFLICT (path) DO UPDATE SET
-        content = EXCLUDED.content,
-        modified = EXCLUDED.modified,
-        size = EXCLUDED.size
-      RETURNING id
-    `;
+    await this.notesCollection.add({
+      ids: [noteId],
+      documents: [noteData.content],
+      metadatas: [{
+        path: noteData.path,
+        title: noteData.title,
+        created: noteData.created.toISOString(),
+        modified: noteData.modified.toISOString(),
+        size: noteData.size
+      }],
+      embeddings: [embedding]
+    });
     
     return noteId;
   }
 
-  async insertEmbedding(noteId: string, embedding: number[], content: string): Promise<void> {
-    const embeddingId = crypto.randomUUID();
-    
-    await this.client`
-      INSERT INTO embeddings (id, note_id, embedding, model, created, chunk, chunk_index)
-      VALUES (${embeddingId}, ${noteId}, ${JSON.stringify(embedding)}, 'Xenova/all-MiniLM-L6-v2', 
-              ${new Date()}, ${content.substring(0, 500)}, 0)
-    `;
-  }
-
   async indexVault(): Promise<void> {
     console.log('🚀 Starting vault indexing...');
+    
+    await this.initialize();
     
     const vaultPath = '/home/mat/Documents/ProgramExperiments/exp/obs-auto-sort/claude_responses';
     
@@ -127,63 +134,48 @@ class EmbeddingIndexer {
     const vaultNotes = await this.getAllNotesFromVault(vaultPath);
     console.log(`📖 Found ${vaultNotes.length} notes in vault`);
     
-    // Get existing notes and embeddings from database
+    // Get existing notes from ChromaDB
     const existingNotes = await this.getExistingNotes();
-    const existingEmbeddings = await this.getExistingEmbeddings();
-    
     const existingNotePaths = new Set(existingNotes.map(n => n.path));
-    const embeddedNoteIds = new Set(existingEmbeddings.map(e => e.note_id));
     
-    console.log(`💾 Found ${existingNotes.length} existing notes in database`);
-    console.log(`🧠 Found ${existingEmbeddings.length} existing embeddings in database`);
+    console.log(`💾 Found ${existingNotes.length} existing notes in ChromaDB`);
     
     let newNotesCount = 0;
-    let newEmbeddingsCount = 0;
     
     for (const vaultNote of vaultNotes) {
       const title = vaultNote.path.replace('.md', '');
-      let noteId: string;
       
       // Insert note if it doesn't exist
       if (!existingNotePaths.has(vaultNote.path)) {
-        noteId = await this.insertNote({
-          path: vaultNote.path,
-          title,
-          content: vaultNote.content,
-          created: new Date(vaultNote.stats.birthtime),
-          modified: new Date(vaultNote.stats.mtime),
-          size: vaultNote.stats.size,
-          tags: []
-        });
-        newNotesCount++;
-        console.log(`📝 Added new note: ${title}`);
-      } else {
-        // Find existing note ID
-        const existingNote = existingNotes.find(n => n.path === vaultNote.path);
-        noteId = existingNote?.id;
-      }
-      
-      // Generate embedding if it doesn't exist
-      if (noteId && !embeddedNoteIds.has(noteId)) {
         try {
           console.log(`🧠 Generating embedding for: ${title}`);
           const embedding = await this.generateEmbedding(vaultNote.content);
-          await this.insertEmbedding(noteId, embedding, vaultNote.content);
-          newEmbeddingsCount++;
-          console.log(`✅ Generated embedding for: ${title} (${embedding.length} dimensions)`);
+          
+          await this.insertNoteWithEmbedding({
+            path: vaultNote.path,
+            title,
+            content: vaultNote.content,
+            created: new Date(vaultNote.stats.birthtime),
+            modified: new Date(vaultNote.stats.mtime),
+            size: vaultNote.stats.size
+          }, embedding);
+          
+          newNotesCount++;
+          console.log(`✅ Added note with embedding: ${title} (${embedding.length} dimensions)`);
         } catch (error) {
-          console.error(`❌ Failed to generate embedding for ${title}:`, error);
+          console.error(`❌ Failed to process ${title}:`, error);
         }
+      } else {
+        console.log(`⏭️  Skipping existing note: ${title}`);
       }
     }
     
     console.log(`🎉 Indexing complete!`);
     console.log(`📝 New notes added: ${newNotesCount}`);
-    console.log(`🧠 New embeddings generated: ${newEmbeddingsCount}`);
   }
 
   async close(): Promise<void> {
-    await this.client.end();
+    // ChromaDB doesn't require explicit connection closing
   }
 }
 

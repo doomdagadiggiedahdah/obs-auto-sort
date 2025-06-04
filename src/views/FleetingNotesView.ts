@@ -1,5 +1,5 @@
 import { ItemView, WorkspaceLeaf, TFile } from 'obsidian';
-import FleetingNotesPlugin from '../main';
+import type FleetingNotesPlugin from '../main';
 import { TextSearch } from '../search/TextSearch';
 import { SemanticSearch } from '../search/SemanticSearch';
 
