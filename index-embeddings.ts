@@ -36,12 +36,8 @@ class EmbeddingIndexer {
   private embedder: any;
 
   constructor() {
-    // Database connection - use peer authentication (same as psql -U postgres)
-    this.client = postgres({
-      host: '/var/run/postgresql',
-      database: 'fleeting_notes',
-      username: 'postgres'
-    });
+    // Database connection
+    this.client = postgres('postgresql://localhost:5432/fleeting_notes');
     this.db = drizzle(this.client);
     this.embedder = null;
   }

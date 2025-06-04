@@ -1,4 +1,4 @@
-import { Plugin } from 'obsidian';
+import { Plugin, Notice } from 'obsidian';
 import { FleetingNotesView, VIEW_TYPE_FLEETING_NOTES } from './views/FleetingNotesView';
 import { FleetingNotesSettingTab } from './settings/SettingsTab';
 
@@ -33,12 +33,28 @@ export default class FleetingNotesPlugin extends Plugin {
 			this.toggleFleetingNotesView();
 		});
 
-		// Add command
+		// Add commands
 		this.addCommand({
 			id: 'toggle-fleeting-notes-view',
 			name: 'Toggle Fleeting Notes View',
 			callback: () => {
 				this.toggleFleetingNotesView();
+			}
+		});
+
+		this.addCommand({
+			id: 'index-all-notes',
+			name: 'Index All Notes for Semantic Search',
+			callback: () => {
+				this.indexAllNotes();
+			}
+		});
+
+		this.addCommand({
+			id: 'index-current-note',
+			name: 'Index Current Note for Semantic Search',
+			callback: () => {
+				this.indexCurrentNote();
 			}
 		});
 
@@ -93,5 +109,69 @@ export default class FleetingNotesPlugin extends Plugin {
 		});
 		
 		workspace.revealLeaf(leaf);
+	}
+
+	async indexAllNotes() {
+		if (!this.settings.dbConnectionString) {
+			new Notice('Please configure database connection in settings first');
+			return;
+		}
+
+		const { SemanticSearch } = await import('./search/SemanticSearch');
+		const semanticSearch = new SemanticSearch(this.app);
+		
+		const initialized = await semanticSearch.initialize(this.settings.dbConnectionString);
+		if (!initialized) {
+			new Notice('Failed to connect to database');
+			return;
+		}
+
+		new Notice('Starting to index all notes...');
+		
+		try {
+			const result = await semanticSearch.indexAllNotes();
+			new Notice(`Indexing complete: ${result.indexed} notes indexed, ${result.failed} failed`);
+		} catch (error) {
+			console.error('Indexing failed:', error);
+			new Notice('Indexing failed - check console for details');
+		} finally {
+			await semanticSearch.close();
+		}
+	}
+
+	async indexCurrentNote() {
+		if (!this.settings.dbConnectionString) {
+			new Notice('Please configure database connection in settings first');
+			return;
+		}
+
+		const activeFile = this.app.workspace.getActiveFile();
+		if (!activeFile) {
+			new Notice('No active file to index');
+			return;
+		}
+
+		const { SemanticSearch } = await import('./search/SemanticSearch');
+		const semanticSearch = new SemanticSearch(this.app);
+		
+		const initialized = await semanticSearch.initialize(this.settings.dbConnectionString);
+		if (!initialized) {
+			new Notice('Failed to connect to database');
+			return;
+		}
+
+		try {
+			const success = await semanticSearch.indexNote(activeFile);
+			if (success) {
+				new Notice(`Successfully indexed: ${activeFile.basename}`);
+			} else {
+				new Notice(`Failed to index: ${activeFile.basename}`);
+			}
+		} catch (error) {
+			console.error('Indexing failed:', error);
+			new Notice('Indexing failed - check console for details');
+		} finally {
+			await semanticSearch.close();
+		}
 	}
 }

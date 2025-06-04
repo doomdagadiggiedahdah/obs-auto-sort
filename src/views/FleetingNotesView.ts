@@ -1,5 +1,4 @@
 import { ItemView, WorkspaceLeaf, TFile } from 'obsidian';
-import FleetingNotesPlugin from '../main';
 import { TextSearch } from '../search/TextSearch';
 import { SemanticSearch } from '../search/SemanticSearch';
 
@@ -15,17 +14,30 @@ export interface SearchResult {
 }
 
 export class FleetingNotesView extends ItemView {
-	private plugin: FleetingNotesPlugin;
+	private plugin: any;
 	private textSearch: TextSearch;
 	private semanticSearch: SemanticSearch;
 	private currentSearchMode: 'text' | 'semantic' = 'text';
 	private searchResults: SearchResult[] = [];
 
-	constructor(leaf: WorkspaceLeaf, plugin: FleetingNotesPlugin) {
+	constructor(leaf: WorkspaceLeaf, plugin: any) {
 		super(leaf);
 		this.plugin = plugin;
 		this.textSearch = new TextSearch(this.app);
 		this.semanticSearch = new SemanticSearch(this.app);
+		
+		// Initialize semantic search with database connection if available
+		this.initializeSemanticSearch();
+	}
+
+	private async initializeSemanticSearch() {
+		const dbConnectionString = this.plugin.settings.dbConnectionString;
+		if (dbConnectionString && this.plugin.settings.enableSemanticSearch) {
+			const initialized = await this.semanticSearch.initialize(dbConnectionString);
+			if (!initialized) {
+				console.warn('Failed to initialize semantic search database connection');
+			}
+		}
 	}
 
 	getViewType() {

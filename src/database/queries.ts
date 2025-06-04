@@ -81,12 +81,117 @@ export class DatabaseManager {
 	}
 
 	async searchSimilarNotes(queryEmbedding: number[], limit: number = 50, threshold: number = 0.7): Promise<Array<Note & { similarity: number }>> {
-		// For now, return simple text-based results until vector search is properly configured
-		const allNotes = await this.getAllNotes();
-		return allNotes.slice(0, limit).map(note => ({
-			...note,
-			similarity: Math.random() * 0.5 + 0.5 // Placeholder similarity score
-		}));
+		try {
+			// Use JavaScript-based cosine similarity since PostgreSQL vector functions may not be available
+			// Get all notes with embeddings and calculate similarity in JavaScript
+			const notesWithEmbeddings = await this.db
+				.select({
+					note: notes,
+					embeddings: embeddings
+				})
+				.from(notes)
+				.innerJoin(embeddings, eq(notes.id, embeddings.noteId))
+				.where(sql`${embeddings.embedding} IS NOT NULL`);
+
+			const results: Array<Note & { similarity: number }> = [];
+			const noteMap = new Map<string, { note: Note; embeddings: number[][]; }>();
+
+			// Group embeddings by note
+			for (const row of notesWithEmbeddings) {
+				if (!row.note || !row.embeddings?.embedding) continue;
+				
+				try {
+					const embedding = JSON.parse(row.embeddings.embedding) as number[];
+					
+					if (!noteMap.has(row.note.id)) {
+						noteMap.set(row.note.id, { note: row.note, embeddings: [] });
+					}
+					noteMap.get(row.note.id)?.embeddings.push(embedding);
+				} catch (e) {
+					console.warn(`Failed to parse embedding for note ${row.note.id}:`, e);
+				}
+			}
+
+			// Calculate similarity for each note
+			for (const [noteId, { note, embeddings: noteEmbeddings }] of noteMap) {
+				let maxSimilarity = 0;
+				
+				for (const embedding of noteEmbeddings) {
+					const similarity = this.calculateCosineSimilarity(queryEmbedding, embedding);
+					maxSimilarity = Math.max(maxSimilarity, similarity);
+				}
+				
+				if (maxSimilarity >= threshold) {
+					results.push({
+						...note,
+						similarity: maxSimilarity
+					});
+				}
+			}
+
+			return results
+				.sort((a, b) => b.similarity - a.similarity)
+				.slice(0, limit);
+		} catch (error) {
+			console.error('Vector search failed, falling back to text search:', error);
+			
+			// Fallback to text-based similarity using existing embeddings
+			const allNotes = await this.db
+				.select({
+					note: notes,
+					embeddings: embeddings
+				})
+				.from(notes)
+				.leftJoin(embeddings, eq(notes.id, embeddings.noteId))
+				.limit(limit * 3); // Get more to filter
+			
+			const results: Array<Note & { similarity: number }> = [];
+			const processedNoteIds = new Set<string>();
+			
+			for (const row of allNotes) {
+				if (!row.note || processedNoteIds.has(row.note.id)) continue;
+				
+				let similarity = 0;
+				if (row.embeddings?.embedding) {
+					try {
+						const embedding = JSON.parse(row.embeddings.embedding) as number[];
+						similarity = this.calculateCosineSimilarity(queryEmbedding, embedding);
+					} catch (e) {
+						similarity = 0.1; // Very low similarity for parsing errors
+					}
+				}
+				
+				if (similarity >= threshold) {
+					results.push({
+						...row.note,
+						similarity
+					});
+					processedNoteIds.add(row.note.id);
+				}
+			}
+			
+			return results
+				.sort((a, b) => b.similarity - a.similarity)
+				.slice(0, limit);
+		}
+	}
+
+	private calculateCosineSimilarity(vecA: number[], vecB: number[]): number {
+		if (vecA.length !== vecB.length) return 0;
+		
+		let dotProduct = 0;
+		let normA = 0;
+		let normB = 0;
+		
+		for (let i = 0; i < vecA.length; i++) {
+			dotProduct += vecA[i] * vecB[i];
+			normA += vecA[i] * vecA[i];
+			normB += vecB[i] * vecB[i];
+		}
+		
+		if (normA === 0 || normB === 0) return 0;
+		
+		return dotProduct / (Math.sqrt(normA) * Math.sqrt(normB));
 	}
 
 	// Search history operations

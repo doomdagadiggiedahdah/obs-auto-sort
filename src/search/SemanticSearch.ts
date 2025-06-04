@@ -9,19 +9,18 @@ interface EmbeddingProvider {
 }
 
 class LocalBiEncoderProvider implements EmbeddingProvider {
-	private modelName = 'local-bi-encoder';
+	private modelName = 'Xenova/all-MiniLM-L6-v2';
 	private dimensions = 384;
+	private embedder: any = null;
 
 	async generateEmbedding(text: string): Promise<number[]> {
-		// This is a placeholder for local embedding generation
-		// In a real implementation, you would use a local model like:
-		// - sentence-transformers via Python bridge
-		// - ONNX.js models
-		// - WebAssembly models
-		// - Or call a local embedding server
+		if (!this.embedder) {
+			const { pipeline } = await import('@xenova/transformers');
+			this.embedder = await pipeline('feature-extraction', this.modelName);
+		}
 		
-		// For now, return a dummy embedding based on text characteristics
-		return this.generateDummyEmbedding(text);
+		const output = await this.embedder(text, { pooling: 'mean', normalize: true });
+		return Array.from(output.data);
 	}
 
 	getDimensions(): number {
@@ -32,42 +31,6 @@ class LocalBiEncoderProvider implements EmbeddingProvider {
 		return this.modelName;
 	}
 
-	private generateDummyEmbedding(text: string): number[] {
-		// Generate a deterministic but pseudo-random embedding based on text
-		const words = text.toLowerCase().split(/\s+/);
-		const embedding = new Array(this.dimensions).fill(0);
-		
-		// Use text characteristics to influence embedding
-		const textLength = text.length;
-		const wordCount = words.length;
-		const avgWordLength = textLength / Math.max(wordCount, 1);
-		
-		// Create a hash-like representation
-		let hash = 0;
-		for (let i = 0; i < text.length; i++) {
-			const char = text.charCodeAt(i);
-			hash = ((hash << 5) - hash) + char;
-			hash = hash & hash; // Convert to 32-bit integer
-		}
-		
-		// Fill embedding with values based on text features
-		for (let i = 0; i < this.dimensions; i++) {
-			const wordIndex = i % words.length;
-			const word = words[wordIndex] || '';
-			
-			// Combine various text features
-			let value = Math.sin((hash + i) * 0.01) * 0.5;
-			value += Math.cos(word.length * (i + 1) * 0.1) * 0.3;
-			value += (textLength % (i + 1)) / 1000;
-			value += avgWordLength * 0.1 * Math.sin(i * 0.1);
-			
-			embedding[i] = Math.tanh(value); // Normalize to [-1, 1]
-		}
-		
-		// Normalize the embedding vector
-		const magnitude = Math.sqrt(embedding.reduce((sum, val) => sum + val * val, 0));
-		return embedding.map(val => val / magnitude);
-	}
 }
 
 export class SemanticSearch {

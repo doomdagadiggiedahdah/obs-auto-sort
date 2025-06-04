@@ -1,10 +1,16 @@
-import { App, PluginSettingTab, Setting } from 'obsidian';
-import FleetingNotesPlugin from '../main';
+import { App, PluginSettingTab, Setting, Plugin } from 'obsidian';
+
+interface FleetingNotesSettings {
+	panelVisible: boolean;
+	dbConnectionString: string;
+	enableSemanticSearch: boolean;
+	embeddingModel: string;
+}
 
 export class FleetingNotesSettingTab extends PluginSettingTab {
-	plugin: FleetingNotesPlugin;
+	plugin: Plugin & { settings: FleetingNotesSettings; saveSettings(): Promise<void> };
 
-	constructor(app: App, plugin: FleetingNotesPlugin) {
+	constructor(app: App, plugin: Plugin & { settings: FleetingNotesSettings; saveSettings(): Promise<void> }) {
 		super(app, plugin);
 		this.plugin = plugin;
 	}
