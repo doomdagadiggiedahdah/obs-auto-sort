@@ -107,7 +107,6 @@ export default class FleetingNotesPlugin extends Plugin {
 
 	async initializeDatabase(): Promise<void> {
 		try {
-			console.log('Initializing ChromaDB connection...');
 			this.dbManager = new DatabaseManager(this.settings.chromaHost, this.settings.chromaPort);
 			
 			const connectionTest = await this.dbManager.testConnection();
