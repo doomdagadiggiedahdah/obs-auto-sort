@@ -1,68 +1,85 @@
-import { Plugin } from 'obsidian';
-import { FleetingNotesView, VIEW_TYPE_FLEETING_NOTES } from './src/views/FleetingNotesView';
-import { FleetingNotesSettingTab } from './src/settings/SettingsTab';
-import { DatabaseManager } from './src/database/queries';
+import { App, Editor, MarkdownView, Modal, Notice, Plugin, PluginSettingTab, Setting } from 'obsidian';
 
-interface FleetingNotesSettings {
-	panelVisible: boolean;
-	chromaHost: string;
-	chromaPort: number;
-	enableSemanticSearch: boolean;
-	embeddingModel: string;
+// Remember to rename these classes and interfaces!
+
+interface MyPluginSettings {
+	mySetting: string;
 }
 
-const DEFAULT_SETTINGS: FleetingNotesSettings = {
-	panelVisible: true,
-	chromaHost: 'localhost',
-	chromaPort: 8000,
-	enableSemanticSearch: true,
-	embeddingModel: 'local'
-};
+const DEFAULT_SETTINGS: MyPluginSettings = {
+	mySetting: 'default'
+}
 
-export default class FleetingNotesPlugin extends Plugin {
-	settings: FleetingNotesSettings;
-	dbManager: DatabaseManager | null = null;
+export default class MyPlugin extends Plugin {
+	settings: MyPluginSettings;
 
 	async onload() {
 		await this.loadSettings();
 
-		// Register the fleeting notes view
-		this.registerView(
-			VIEW_TYPE_FLEETING_NOTES,
-			(leaf) => new FleetingNotesView(leaf, this)
-		);
-
-		// Add ribbon icon
-		this.addRibbonIcon('search', 'Toggle Fleeting Notes', (evt: MouseEvent) => {
-			this.toggleFleetingNotesView();
+		// This creates an icon in the left ribbon.
+		const ribbonIconEl = this.addRibbonIcon('dice', 'Sample Plugin', (evt: MouseEvent) => {
+			// Called when the user clicks the icon.
+			new Notice('This is a notice!');
 		});
+		// Perform additional things with the ribbon
+		ribbonIconEl.addClass('my-plugin-ribbon-class');
 
-		// Add command
+		// This adds a status bar item to the bottom of the app. Does not work on mobile apps.
+		const statusBarItemEl = this.addStatusBarItem();
+		statusBarItemEl.setText('Status Bar Text');
+
+		// This adds a simple command that can be triggered anywhere
 		this.addCommand({
-			id: 'toggle-fleeting-notes-view',
-			name: 'Toggle Fleeting Notes View',
+			id: 'open-sample-modal-simple',
+			name: 'Open sample modal (simple)',
 			callback: () => {
-				this.toggleFleetingNotesView();
+				new SampleModal(this.app).open();
+			}
+		});
+		// This adds an editor command that can perform some operation on the current editor instance
+		this.addCommand({
+			id: 'sample-editor-command',
+			name: 'Sample editor command',
+			editorCallback: (editor: Editor, view: MarkdownView) => {
+				console.log(editor.getSelection());
+				editor.replaceSelection('Sample Editor Command');
+			}
+		});
+		// This adds a complex command that can check whether the current state of the app allows execution of the command
+		this.addCommand({
+			id: 'open-sample-modal-complex',
+			name: 'Open sample modal (complex)',
+			checkCallback: (checking: boolean) => {
+				// Conditions to check
+				const markdownView = this.app.workspace.getActiveViewOfType(MarkdownView);
+				if (markdownView) {
+					// If checking is true, we're simply "checking" if the command can be run.
+					// If checking is false, then we want to actually perform the operation.
+					if (!checking) {
+						new SampleModal(this.app).open();
+					}
+
+					// This command will only show up in Command Palette when the check function returns true
+					return true;
+				}
 			}
 		});
 
-		// Add settings tab
-		this.addSettingTab(new FleetingNotesSettingTab(this.app, this));
+		// This adds a settings tab so the user can configure various aspects of the plugin
+		this.addSettingTab(new SampleSettingTab(this.app, this));
 
-		// Initialize database connection
-		await this.initializeDatabase();
+		// If the plugin hooks up any global DOM events (on parts of the app that doesn't belong to this plugin)
+		// Using this function will automatically remove the event listener when this plugin is disabled.
+		this.registerDomEvent(document, 'click', (evt: MouseEvent) => {
+			console.log('click', evt);
+		});
 
-		// Initialize view if panel should be visible
-		if (this.settings.panelVisible) {
-			this.initFleetingNotesView();
-		}
+		// When registering intervals, this function will automatically clear the interval when the plugin is disabled.
+		this.registerInterval(window.setInterval(() => console.log('setInterval'), 5 * 60 * 1000));
 	}
 
 	onunload() {
-		this.app.workspace.detachLeavesOfType(VIEW_TYPE_FLEETING_NOTES);
-		if (this.dbManager) {
-			this.dbManager.close();
-		}
+
 	}
 
 	async loadSettings() {
@@ -72,64 +89,46 @@ export default class FleetingNotesPlugin extends Plugin {
 	async saveSettings() {
 		await this.saveData(this.settings);
 	}
+}
 
-	async toggleFleetingNotesView() {
-		const existing = this.app.workspace.getLeavesOfType(VIEW_TYPE_FLEETING_NOTES);
-		
-		if (existing.length > 0) {
-			// Close existing view
-			existing.forEach(leaf => leaf.detach());
-			this.settings.panelVisible = false;
-		} else {
-			// Open new view
-			await this.initFleetingNotesView();
-			this.settings.panelVisible = true;
-		}
-		
-		await this.saveSettings();
+class SampleModal extends Modal {
+	constructor(app: App) {
+		super(app);
 	}
 
-	async initFleetingNotesView() {
-		const { workspace } = this.app;
-		
-		let leaf = workspace.getRightLeaf(false);
-		if (!leaf) {
-			leaf = workspace.createLeafBySplit(workspace.getLeaf(), 'vertical');
-		}
-		
-		await leaf.setViewState({
-			type: VIEW_TYPE_FLEETING_NOTES,
-			active: true,
-		});
-		
-		workspace.revealLeaf(leaf);
+	onOpen() {
+		const {contentEl} = this;
+		contentEl.setText('Woah!');
 	}
 
-	async initializeDatabase(): Promise<void> {
-		try {
-			this.dbManager = new DatabaseManager(this.settings.chromaHost, this.settings.chromaPort);
-			
-			const connectionTest = await this.dbManager.testConnection();
-			if (connectionTest) {
-				console.log('ChromaDB connection successful');
-				const initResult = await this.dbManager.initialize();
-				if (initResult) {
-					console.log('ChromaDB collections initialized');
-				} else {
-					console.error('Failed to initialize ChromaDB collections');
-				}
-			} else {
-				console.error('ChromaDB connection failed');
-			}
-		} catch (error) {
-			console.error('Error initializing database:', error);
-		}
+	onClose() {
+		const {contentEl} = this;
+		contentEl.empty();
+	}
+}
+
+class SampleSettingTab extends PluginSettingTab {
+	plugin: MyPlugin;
+
+	constructor(app: App, plugin: MyPlugin) {
+		super(app, plugin);
+		this.plugin = plugin;
 	}
 
-	async testDatabaseConnection(): Promise<boolean> {
-		if (!this.dbManager) {
-			return false;
-		}
-		return await this.dbManager.testConnection();
+	display(): void {
+		const {containerEl} = this;
+
+		containerEl.empty();
+
+		new Setting(containerEl)
+			.setName('Setting #1')
+			.setDesc('It\'s a secret')
+			.addText(text => text
+				.setPlaceholder('Enter your secret')
+				.setValue(this.plugin.settings.mySetting)
+				.onChange(async (value) => {
+					this.plugin.settings.mySetting = value;
+					await this.plugin.saveSettings();
+				}));
 	}
 }
