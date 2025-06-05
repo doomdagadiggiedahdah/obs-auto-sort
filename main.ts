@@ -1,4 +1,4 @@
-import { App, Editor, MarkdownView, Modal, Notice, Plugin, PluginSettingTab, Setting } from 'obsidian';
+import { App, Editor, MarkdownView, Modal, Notice, Plugin, PluginSettingTab, Setting, ItemView, WorkspaceLeaf } from 'obsidian';
 
 // Remember to rename these classes and interfaces!
 
@@ -10,16 +10,58 @@ const DEFAULT_SETTINGS: MyPluginSettings = {
 	mySetting: 'default'
 }
 
+const VIEW_TYPE_SEARCH_PANEL = "search-panel-view";
+
+class SearchPanelView extends ItemView {
+	private searchInput: HTMLInputElement;
+
+	getViewType(): string {
+		return VIEW_TYPE_SEARCH_PANEL;
+	}
+
+	getDisplayText(): string {
+		return "Search Panel";
+	}
+
+	async onOpen() {
+		const container = this.containerEl.children[1];
+		container.empty();
+		container.createEl("h4", { text: "Search Panel" });
+
+		const inputContainer = container.createEl("div", { cls: "search-input-container" });
+		this.searchInput = inputContainer.createEl("input", {
+			type: "text",
+			placeholder: "Enter search query...",
+			cls: "search-input"
+		});
+
+		this.searchInput.addEventListener("input", (e) => {
+			const query = (e.target as HTMLInputElement).value;
+			console.log("Search query:", query);
+		});
+	}
+
+	async onClose() {
+		// Clean up
+	}
+}
+
 export default class MyPlugin extends Plugin {
 	settings: MyPluginSettings;
 
 	async onload() {
 		await this.loadSettings();
 
+		// Register the search panel view
+		this.registerView(
+			VIEW_TYPE_SEARCH_PANEL,
+			(leaf) => new SearchPanelView(leaf)
+		);
+
 		// This creates an icon in the left ribbon.
-		const ribbonIconEl = this.addRibbonIcon('dice', 'Sample Plugin', (evt: MouseEvent) => {
+		const ribbonIconEl = this.addRibbonIcon('search', 'Open Search Panel', (evt: MouseEvent) => {
 			// Called when the user clicks the icon.
-			new Notice('This is a notice!');
+			this.activateView();
 		});
 		// Perform additional things with the ribbon
 		ribbonIconEl.addClass('my-plugin-ribbon-class');
@@ -31,7 +73,7 @@ export default class MyPlugin extends Plugin {
 		// This adds a simple command that can be triggered anywhere
 		this.addCommand({
 			id: 'open-sample-modal-simple',
-			name: 'Open sample modal (simple)',
+			name: 'Open fleeting notes (simple)',
 			callback: () => {
 				new SampleModal(this.app).open();
 			}
@@ -88,6 +130,28 @@ export default class MyPlugin extends Plugin {
 
 	async saveSettings() {
 		await this.saveData(this.settings);
+	}
+
+	async activateView() {
+		const { workspace } = this.app;
+
+		let leaf: WorkspaceLeaf | null = null;
+		const leaves = workspace.getLeavesOfType(VIEW_TYPE_SEARCH_PANEL);
+
+		if (leaves.length > 0) {
+			// A leaf with our view already exists, use that
+			leaf = leaves[0];
+		} else {
+			// Our view could not be found in the workspace, create a new leaf
+			// in the right sidebar for it
+			leaf = workspace.getRightLeaf(false);
+			await leaf?.setViewState({ type: VIEW_TYPE_SEARCH_PANEL, active: true });
+		}
+
+		// "Reveal" the leaf in case it is in a collapsed sidebar
+		if (leaf) {
+			workspace.revealLeaf(leaf);
+		}
 	}
 }
 
